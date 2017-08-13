@@ -115,7 +115,7 @@ struct Status {
 Status laneR, laneL,stopTracked;
 
 enum {
-  CROP_IMG_TOP_OFFSET = 20,     // height (in pixels) from top to neglect  in bottom half of camera image
+  CROP_IMG_TOP_OFFSET = 40,     // height (in pixels) from top to neglect in bottom half of camera image
   CROP_IMG_BTM_OFFSET = 150,     // height (in pixels) from bottom to neglect in camera image
   CROP_IMG_SIDE_OFFSET = 250,     // width (in pixels) from left and right to neglect in camera image
   SCAN_STEP           = 5,      // in pixels
@@ -127,14 +127,14 @@ enum {
   CANNY_MIN_TRESHOLD = 15,       // edge detector minimum hysteresis threshold
   CANNY_MAX_TRESHOLD = 50,     // edge detector maximum hysteresis threshold
 
-  HOUGH_TRESHOLD        = 100,   // line approval vote threshold
+  HOUGH_TRESHOLD        = 140,   // line approval vote threshold
   HOUGH_MIN_LINE_LENGTH = 50,   // remove lines shorter than this treshold
   HOUGH_MAX_LINE_GAP    = 100   // join lines to one with smaller than this gaps
 };
 
 #define K_VARY_FACTOR 0.2f
 #define B_VARY_FACTOR 1000
-#define MAX_LOST_FRAMES 30
+#define MAX_LOST_FRAMES 5
 
 static void FindHorizResponses(IplImage *img, int startY, int endY, int x, std::vector<int> &list)
 {
@@ -646,10 +646,11 @@ cvLine(org_frame, org_p0, org_p1, BLUE, 2);
   int x2 = temp_frame->width * 0.65f  + org_horiz_offset;
 //#if defined(USE_POSIX_SHARED_MEMORY)
 //#ifdef SHOW_DETAIL
+if (stopTracked.reset == false)
   cvLine(temp_frame, cvPoint(x, stopTracked.k.get()*x + stopTracked.b.get()),
          cvPoint(x2, stopTracked.k.get()*x2 + stopTracked.b.get()), PURPLE, 2);
 //#endif
-
+if (stopTracked.reset == false)
   cvLine(org_frame, cvPoint(x, stopTracked.k.get()*x + stopTracked.b.get() + org_vert_offset),
          cvPoint(x2, stopTracked.k.get()*x2 + stopTracked.b.get() + org_vert_offset), PURPLE, 2);
 //#else

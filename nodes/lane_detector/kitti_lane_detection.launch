@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="lane_detector" name="kitti_lane_detection_test" type="kitti_lane_detector" output="screen">
+      <param name="image_raw_topic" type="str" value="/camera/image_raw"/>
+  </node>
+</launch>

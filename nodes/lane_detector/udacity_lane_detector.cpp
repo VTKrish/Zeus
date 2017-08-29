@@ -112,7 +112,7 @@ enum {
 
 #define K_VARY_FACTOR 0.2f
 #define B_VARY_FACTOR 20
-#define MAX_LOST_FRAMES 30
+#define MAX_LOST_FRAMES 5
 #define WHITE_SENSITIVITY 45
 
 static void FindResponses(IplImage *img, int startX, int endX, int y, std::vector<int> &list)
@@ -421,7 +421,7 @@ static void processLanes(CvSeq *lines, IplImage* edges, IplImage *temp_frame, Ip
   processSide(right, edges, true);
 
   /* show computed lanes */
-  int x = temp_frame->width * 0.55f;
+  int x = temp_frame->width * 0.52f;
   int x2 = temp_frame->width;
 
   cvLine(temp_frame, cvPoint(x, laneR.k.get()*x + laneR.b.get()),
@@ -436,7 +436,7 @@ static void processLanes(CvSeq *lines, IplImage* edges, IplImage *temp_frame, Ip
   lane_msg.lane_r_y2 = laneR.k.get()*x2 + laneR.b.get() + org_offset;
 
   x = temp_frame->width * 0;
-  x2 = temp_frame->width * 0.45f;
+  x2 = temp_frame->width * 0.48f;
   
   cvLine(temp_frame, cvPoint(x, laneL.k.get()*x + laneL.b.get()),
         cvPoint(x2, laneL.k.get()*x2 + laneL.b.get()), PURPLE, 2);
@@ -471,6 +471,9 @@ static void process_image_common(IplImage *frame)
   IplImage *w_frame = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
   IplImage *yw_frame = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
   IplImage *gray       = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
+  IplImage *b1       = cvCreateImage(frame_size, IPL_DEPTH_32F, 1);
+  IplImage *b2       = cvCreateImage(frame_size, IPL_DEPTH_32F, 1);
+  IplImage *grayf       = cvCreateImage(frame_size, IPL_DEPTH_32F, 1);
   IplImage *edges      = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
   IplImage *half_frame = cvCreateImage(cvSize(video_size.width/2, video_size.height/2), IPL_DEPTH_8U, 3);
 
@@ -485,6 +488,7 @@ static void process_image_common(IplImage *frame)
   /* mask for yellow then white, then bitwise OR the two */
   cvInRangeS(hsv_frame, cv::Scalar(20,100,100), cv::Scalar(30,255,255), y_frame);
   cvInRangeS(hsv_frame, cv::Scalar(0,0,255-WHITE_SENSITIVITY), cv::Scalar(255,WHITE_SENSITIVITY,255), w_frame);
+  
   //cvInRangeS(gray, cv::Scalar(150) , cv::Scalar(255) , w_frame);
   cvOr(y_frame, w_frame, yw_frame);
   cvAnd(gray, yw_frame, new_frame);
@@ -520,6 +524,7 @@ static void process_image_common(IplImage *frame)
          cvPoint(frame_size.width/2, frame_size.height), CV_RGB(255, 255, 0), 1);
 
   cvShowImage("Edges", edges);
+  cvShowImage("gray", gray);
   cvShowImage("new_frame", new_frame);
   cvShowImage("frame", frame);
 #endif

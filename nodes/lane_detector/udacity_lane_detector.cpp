@@ -96,9 +96,9 @@ enum {
 #else
   CROP_IMG_BTM_OFFSET = 70,
 #endif
-  SCAN_STEP           = 5,      // in pixels
+  SCAN_STEP           = 1,      // in pixels
   LINE_REJECT_DEGREES = 10,     // in degrees
-  BW_TRESHOLD         = 300,    // edge response strength to recognize for 'WHITE'
+  BW_TRESHOLD         = 200,    // edge response strength to recognize for 'WHITE'
   BORDERX             = 10,     // px, skip this much from left & right borders
   MAX_RESPONSE_DIST   = 5,      // px
 
@@ -112,7 +112,8 @@ enum {
 
 #define K_VARY_FACTOR 0.2f
 #define B_VARY_FACTOR 20
-#define MAX_LOST_FRAMES 2
+#define MAX_LOST_FRAMES 30
+#define WHITE_SENSITIVITY 45
 
 static void FindResponses(IplImage *img, int startX, int endX, int y, std::vector<int> &list)
 {
@@ -126,7 +127,8 @@ static void FindResponses(IplImage *img, int startX, int endX, int y, std::vecto
 
   for (int x = startX; range>0; x+=step, range--)
     {
-      if (ptr[row + x] <= BW_TRESHOLD) continue; // skip black: loop until white pixels show up
+      if (ptr[row + x] <= BW_TRESHOLD) 
+        continue; // skip black: loop until white pixels show up
 
       /* first response found */
       int idx = x + step;
@@ -273,7 +275,7 @@ void processSide(std::vector<Lane> lanes, IplImage *edges, bool right)
 
           for (std::size_t j = 0; j < lanes.size(); ++j)
             {
-              /* compute response point destance to current line */
+              /* compute response point distance to current line */
               float d = dist2line (
                                    cvPoint2D32f(lanes[j].p0.x, lanes[j].p0.y),
                                    cvPoint2D32f(lanes[j].p1.x, lanes[j].p1.y),
@@ -380,9 +382,7 @@ static void processLanes(CvSeq *lines, IplImage* edges, IplImage *temp_frame, Ip
       float angle = atan2f(dy, dx) * 180/CV_PI;
 
       if (fabs(angle) <= LINE_REJECT_DEGREES) // reject near horizontal lines
-        {
           continue;
-        }
 
       /* assume that vanishing point is close to the image horizontal center
          calculate line parameters: y = kx + b; */
@@ -393,13 +393,9 @@ static void processLanes(CvSeq *lines, IplImage* edges, IplImage *temp_frame, Ip
       /* assign lane's side based by its midpoint position */
       int midx = (line[0].x + line[1].x) / 2;
       if (midx < temp_frame->width/2)
-        {
           left.push_back(Lane(line[0], line[1], angle, k, b));
-        }
       else if (midx > temp_frame->width/2)
-        {
           right.push_back(Lane(line[0], line[1], angle, k, b));
-        }
     }
 
   /* show Hough lines */
@@ -488,7 +484,8 @@ static void process_image_common(IplImage *frame)
   cvCvtColor(temp_frame, gray, CV_BGR2GRAY);        // contert to grayscale
   /* mask for yellow then white, then bitwise OR the two */
   cvInRangeS(hsv_frame, cv::Scalar(20,100,100), cv::Scalar(30,255,255), y_frame);
-  cvInRangeS(gray, cv::Scalar(150) , cv::Scalar(255) , w_frame);
+  cvInRangeS(hsv_frame, cv::Scalar(0,0,255-WHITE_SENSITIVITY), cv::Scalar(255,WHITE_SENSITIVITY,255), w_frame);
+  //cvInRangeS(gray, cv::Scalar(150) , cv::Scalar(255) , w_frame);
   cvOr(y_frame, w_frame, yw_frame);
   cvAnd(gray, yw_frame, new_frame);
   /* Create an ROI which roughly corresponds to a single lane */
@@ -497,8 +494,8 @@ static void process_image_common(IplImage *frame)
   CvPoint road_points[1][4];
   road_points[0][0] = cvPoint(w/3, h);
   road_points[0][1] = cvPoint(w * 2 / 3, h);
-  road_points[0][2] = cvPoint(w * 3 / 5 , h / 8);
-  road_points[0][3] = cvPoint(w * 2 / 5 , h / 8);
+  road_points[0][2] = cvPoint(w * 3 / 5 , 0);
+  road_points[0][3] = cvPoint(w * 2 / 5 , 0);
   int npt[] = { 4 };
   CvPoint *ppt[1] = { road_points[0] };
   cvSet(mask, cv::Scalar(0));

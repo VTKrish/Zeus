@@ -40,34 +40,20 @@
 #include <stdio.h>
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
-
 #include <math.h>
 #include <list>
 #include "utils.h"
 #include <string>
 /*#include "switch_release.h"*/
 
-#if !defined(USE_POSIX_SHARED_MEMORY)
 #include "ros/ros.h"
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/CompressedImage.h>
 #include <lane_detector/ImageLaneObjects.h>
-#endif
 
-#if defined(USE_POSIX_SHARED_MEMORY)
-/* global variables and function to use shared memory */
-static unsigned char    *shrd_ptr;
-static int              *shrd_ptr_height, *shrd_ptr_width;
-extern void      attach_ShareMem(void);
-extern IplImage *getImage_fromSHM(void);
-extern void      setImage_toSHM(IplImage *result);
-extern void      detach_ShareMem(void);
-#endif
-
-#ifndef RELEASE
 #define SHOW_DETAIL // if this macro is valid, grayscale/edge/half images are displayed
-#endif
+#define KITTI
 
 static ros::Publisher image_lane_objects;
 
@@ -105,24 +91,28 @@ struct Status {
 Status laneR, laneL;
 
 enum {
+#ifdef KITTI
   CROP_IMG_BTM_OFFSET = 0,     // height (in pixels) from bottom to neglect in camera image
+#else
+  CROP_IMG_BTM_OFFSET = 70,
+#endif
   SCAN_STEP           = 5,      // in pixels
   LINE_REJECT_DEGREES = 10,     // in degrees
   BW_TRESHOLD         = 300,    // edge response strength to recognize for 'WHITE'
   BORDERX             = 10,     // px, skip this much from left & right borders
   MAX_RESPONSE_DIST   = 5,      // px
 
-  CANNY_MIN_TRESHOLD = 50,       // edge detector minimum hysteresis threshold
-  CANNY_MAX_TRESHOLD = 150,     // edge detector maximum hysteresis threshold
+  CANNY_MIN_TRESHOLD = 15,       // edge detector minimum hysteresis threshold
+  CANNY_MAX_TRESHOLD = 60,     // edge detector maximum hysteresis threshold
 
-  HOUGH_TRESHOLD        = 100,   // line approval vote threshold
+  HOUGH_TRESHOLD        = 60,   // line approval vote threshold
   HOUGH_MIN_LINE_LENGTH = 50,   // remove lines shorter than this treshold
-  HOUGH_MAX_LINE_GAP    = 200   // join lines to one with smaller than this gaps
+  HOUGH_MAX_LINE_GAP    = 100   // join lines to one with smaller than this gaps
 };
 
-#define K_VARY_FACTOR 100.0f
-#define B_VARY_FACTOR 200
-#define MAX_LOST_FRAMES 6
+#define K_VARY_FACTOR 0.2f
+#define B_VARY_FACTOR 20
+#define MAX_LOST_FRAMES 2
 
 static void FindResponses(IplImage *img, int startX, int endX, int y, std::vector<int> &list)
 {
@@ -412,41 +402,24 @@ static void processLanes(CvSeq *lines, IplImage* edges, IplImage *temp_frame, Ip
         }
     }
 
-//printf("right: %lu, left: %lu\n",right.size(),left.size());
-
   /* show Hough lines */
   int org_offset = temp_frame->height;
   for (std::size_t i = 0; i < right.size(); ++i)
-    {
-      CvPoint org_p0 = right[i].p0;
-      org_p0.y += org_offset;
-      CvPoint org_p1 = right[i].p1;
-      org_p1.y += org_offset;
-
-cvLine(org_frame, org_p0, org_p1, BLUE, 2);
-
-#ifdef USE_POSIX_SHARED_MEMORY
-#ifdef SHOW_DETAIL
-      cvLine(temp_frame, right[i].p0, right[i].p1, BLUE, 2);
-#endif
-      cvLine(org_frame, org_p0, org_p1, BLUE, 2);
-#endif
-    }
+  {
+    CvPoint org_p0 = right[i].p0;
+    org_p0.y += org_offset;
+    CvPoint org_p1 = right[i].p1;
+    org_p1.y += org_offset;
+    cvLine(org_frame, org_p0, org_p1, BLUE, 2);
+  }
   for (std::size_t i = 0; i < left.size(); ++i)
-    {
-      CvPoint org_p0 = left[i].p0;
-      org_p0.y += org_offset;
-      CvPoint org_p1 = left[i].p1;
-      org_p1.y += org_offset;
-
-cvLine(org_frame, org_p0, org_p1, RED, 2);
-#ifdef USE_POSIX_SHARED_MEMORY
-#ifdef SHOW_DETAIL
-      cvLine(temp_frame, left[i].p0, left[i].p1, RED, 2);
-#endif
-      cvLine(org_frame, org_p0, org_p1, RED, 2);
-#endif
-    }
+  {
+    CvPoint org_p0 = left[i].p0;
+    org_p0.y += org_offset;
+    CvPoint org_p1 = left[i].p1;
+    org_p1.y += org_offset;
+    cvLine(org_frame, org_p0, org_p1, RED, 2);
+  }
 
   processSide(left, edges, false);
   processSide(right, edges, true);
@@ -454,87 +427,33 @@ cvLine(org_frame, org_p0, org_p1, RED, 2);
   /* show computed lanes */
   int x = temp_frame->width * 0.55f;
   int x2 = temp_frame->width;
-//#if defined(USE_POSIX_SHARED_MEMORY)
-//#ifdef SHOW_DETAIL
-  cvLine(temp_frame, cvPoint(x, laneR.k.get()*x + laneR.b.get()),
-         cvPoint(x2, laneR.k.get()*x2 + laneR.b.get()), PURPLE, 2);
-//#endif
 
+  cvLine(temp_frame, cvPoint(x, laneR.k.get()*x + laneR.b.get()),
+        cvPoint(x2, laneR.k.get()*x2 + laneR.b.get()), PURPLE, 2);
   cvLine(org_frame, cvPoint(x, laneR.k.get()*x + laneR.b.get() + org_offset),
-         cvPoint(x2, laneR.k.get()*x2 + laneR.b.get() + org_offset), PURPLE, 2);
-//#else
+        cvPoint(x2, laneR.k.get()*x2 + laneR.b.get() + org_offset), PURPLE, 2);
+
   lane_detector::ImageLaneObjects lane_msg;
   lane_msg.lane_r_x1 = x;
   lane_msg.lane_r_y1 = laneR.k.get()*x + laneR.b.get() + org_offset;
   lane_msg.lane_r_x2 = x2;
   lane_msg.lane_r_y2 = laneR.k.get()*x2 + laneR.b.get() + org_offset;
-//#endif
 
   x = temp_frame->width * 0;
   x2 = temp_frame->width * 0.45f;
-//#if defined(USE_POSIX_SHARED_MEMORY)
-//#ifdef SHOW_DETAIL
+  
   cvLine(temp_frame, cvPoint(x, laneL.k.get()*x + laneL.b.get()),
-         cvPoint(x2, laneL.k.get()*x2 + laneL.b.get()), PURPLE, 2);
-//#endif
-
+        cvPoint(x2, laneL.k.get()*x2 + laneL.b.get()), PURPLE, 2);
   cvLine(org_frame, cvPoint(x, laneL.k.get()*x + laneL.b.get() + org_offset),
-         cvPoint(x2, laneL.k.get()*x2 + laneL.b.get() + org_offset), PURPLE, 2);
-//#else
+        cvPoint(x2, laneL.k.get()*x2 + laneL.b.get() + org_offset), PURPLE, 2);
+
   lane_msg.lane_l_x1 = x;
   lane_msg.lane_l_y1 = laneL.k.get()*x + laneL.b.get() + org_offset;
   lane_msg.lane_l_x2 = x2;
   lane_msg.lane_l_y2 = laneL.k.get()*x2 + laneL.b.get() + org_offset;
 
-  //image_lane_objects.publish(lane_msg);
-//#endif
-  // cvLine(org_frame, cvPoint(lane_msg.lane_l_x1, lane_msg.lane_l_y1), cvPoint(lane_msg.lane_l_x2, lane_msg.lane_l_y2), RED, 5);
-  // cvLine(org_frame, cvPoint(lane_msg.lane_r_x1, lane_msg.lane_r_y1), cvPoint(lane_msg.lane_r_x2, lane_msg.lane_r_y2), RED, 5);
-
-  // ***********
-  cvShowImage("hough_lines", org_frame);
-  //const CvArr* mask=NULL;
-  cvSet(org_frame, CV_RGB(255,0,0)); // Non-road color is red.
-  //CvPoint *road_points;
-  // = new cvPoint[1][4];
-  int h = org_frame->height;
-
-  // Check for intersection of lane lines
-  float c1 = laneR.k.get() - laneL.k.get();
-  int c2 = laneR.b.get() - laneL.b.get();
-  int x_bar = int((-1 * c2) / c1);
-  int y_bar = int(laneL.k.get()*x_bar + laneL.b.get() + org_offset);
-  if(y_bar <= h/2){
-    CvPoint road_points[1][4];
-    int ry1 = h;
-    int rx1 = (ry1 - laneR.b.get() - org_offset) / laneR.k.get();
-    int ry2 = h / 2;
-    int rx2 = (ry2 - laneR.b.get() - org_offset) / laneR.k.get();
-    int ry3 = h / 2;
-    int rx3 = (ry3 - laneL.b.get() - org_offset) / laneL.k.get();
-    int ry4 = h;
-    int rx4 = (ry4 - laneL.b.get() - org_offset) / laneL.k.get();
-    road_points[0][0] = cvPoint(rx1,ry1);
-    road_points[0][1] = cvPoint(rx2,ry2);
-    road_points[0][2] = cvPoint(rx3,ry3);
-    road_points[0][3] = cvPoint(rx4,ry4);
-    int npt[] = { 4 };
-    CvPoint *ppt[1] = { road_points[0] };
-    cvFillPoly(org_frame, ppt, npt, 1, CV_RGB(255,0,255), 8, 0);
-  }
-  else{
-    CvPoint road_points[1][3];
-    int ry1 = h;
-    int rx1 = (ry1 - laneR.b.get() - org_offset) / laneR.k.get();
-    int ry3 = h;
-    int rx3 = (ry3 - laneL.b.get() - org_offset) / laneL.k.get();
-    road_points[0][0] = cvPoint(rx1,ry1);
-    road_points[0][1] = cvPoint(x_bar,y_bar);
-    road_points[0][2] = cvPoint(rx3,ry3);
-    int npt[] = { 3 };
-    CvPoint *ppt[1] = { road_points[0] };
-    cvFillPoly(org_frame, ppt, npt, 1, CV_RGB(255,0,255), 8, 0);
-  }
+  /* Publish Lane Objects */
+  image_lane_objects.publish(lane_msg);
 }
 
 static void process_image_common(IplImage *frame)
@@ -543,16 +462,18 @@ static void process_image_common(IplImage *frame)
   cvInitFont(&font, CV_FONT_VECTOR0, 0.25f, 0.25f);
 
   CvSize video_size;
-#if defined(USE_POSIX_SHARED_MEMORY)
-  video_size.height = *shrd_ptr_height;
-  video_size.width  = *shrd_ptr_width;
-#else
   // XXX These parameters should be set ROS parameters
   video_size.height = frame->height;
   video_size.width  = frame->width;
-#endif
+
   CvSize    frame_size = cvSize(video_size.width, video_size.height/2-CROP_IMG_BTM_OFFSET);
   IplImage *temp_frame = cvCreateImage(frame_size, IPL_DEPTH_8U, 3);
+  IplImage *new_frame = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
+  IplImage *mask = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
+  IplImage *hsv_frame = cvCreateImage(frame_size, IPL_DEPTH_8U, 3);
+  IplImage *y_frame = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
+  IplImage *w_frame = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
+  IplImage *yw_frame = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
   IplImage *gray       = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
   IplImage *edges      = cvCreateImage(frame_size, IPL_DEPTH_8U, 1);
   IplImage *half_frame = cvCreateImage(cvSize(video_size.width/2, video_size.height/2), IPL_DEPTH_8U, 3);
@@ -563,12 +484,30 @@ static void process_image_common(IplImage *frame)
 
   /* we're intersted only in road below horizont - so crop top image portion off */
   crop(frame, temp_frame, cvRect(0, frame_size.height, frame_size.width, frame_size.height));
-  cvCvtColor(temp_frame, gray, CV_BGR2GRAY); // contert to grayscale
+  cvCvtColor(temp_frame, hsv_frame, CV_BGR2HSV);    // Masking for colors works better in HSV
+  cvCvtColor(temp_frame, gray, CV_BGR2GRAY);        // contert to grayscale
+  /* mask for yellow then white, then bitwise OR the two */
+  cvInRangeS(hsv_frame, cv::Scalar(20,100,100), cv::Scalar(30,255,255), y_frame);
+  cvInRangeS(gray, cv::Scalar(150) , cv::Scalar(255) , w_frame);
+  cvOr(y_frame, w_frame, yw_frame);
+  cvAnd(gray, yw_frame, new_frame);
+  /* Create an ROI which roughly corresponds to a single lane */
+  int w = frame_size.width;
+  int h = frame_size.height;
+  CvPoint road_points[1][4];
+  road_points[0][0] = cvPoint(w/3, h);
+  road_points[0][1] = cvPoint(w * 2 / 3, h);
+  road_points[0][2] = cvPoint(w * 3 / 5 , h / 8);
+  road_points[0][3] = cvPoint(w * 2 / 5 , h / 8);
+  int npt[] = { 4 };
+  CvPoint *ppt[1] = { road_points[0] };
+  cvSet(mask, cv::Scalar(0));
+  cvFillPoly(mask, ppt, npt, 1, cv::Scalar(255), 8, 0);
+  cvAnd(mask, new_frame, new_frame);
 
   /* Perform a Gaussian blur & detect edges */
-  // smoothing image more strong than original program
-  cvSmooth(gray, gray, CV_GAUSSIAN, 15, 15);
-  cvCanny(gray, edges, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
+  cvSmooth(new_frame, new_frame, CV_GAUSSIAN, 15, 15);
+  cvCanny(new_frame, edges, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
 
   /* do Hough transform to find lanes */
   double rho = 1;
@@ -576,28 +515,16 @@ static void process_image_common(IplImage *frame)
   CvSeq *lines = cvHoughLines2(edges, houghStorage, CV_HOUGH_PROBABILISTIC,
                                rho, theta, HOUGH_TRESHOLD, HOUGH_MIN_LINE_LENGTH, HOUGH_MAX_LINE_GAP);
 
-  processLanes(lines, edges, temp_frame, frame);
+  processLanes(lines, edges, new_frame, frame);
 
 #ifdef SHOW_DETAIL
   /* show middle line */
   cvLine(temp_frame, cvPoint(frame_size.width/2, 0),
          cvPoint(frame_size.width/2, frame_size.height), CV_RGB(255, 255, 0), 1);
 
-  //cvShowImage("Gray", gray);
   cvShowImage("Edges", edges);
-  //cvShowImage("Color", temp_frame);
-  cvShowImage("temp_frame", temp_frame);
+  cvShowImage("new_frame", new_frame);
   cvShowImage("frame", frame);
-#endif
-
-#if defined(USE_POSIX_SHARED_MEMORY)
-  setImage_toSHM(frame);
-#endif
-
-#ifdef SHOW_DETAIL
-  //cvMoveWindow("Gray", 0, 0);
-  // cvMoveWindow("Edges", 0, frame_size.height+25);
-  // cvMoveWindow("Color", 0, 2*(frame_size.height+25));
 #endif
 
   cvReleaseMemStorage(&houghStorage);
@@ -605,41 +532,25 @@ static void process_image_common(IplImage *frame)
   cvReleaseImage(&edges);
   cvReleaseImage(&temp_frame);
   cvReleaseImage(&half_frame);
+  cvReleaseImage(&new_frame);
+  cvReleaseImage(&mask);
+  cvReleaseImage(&hsv_frame);
+  cvReleaseImage(&y_frame);
+  cvReleaseImage(&w_frame);
+  cvReleaseImage(&yw_frame);
 }
 
-#if !defined(USE_POSIX_SHARED_MEMORY)
+
 static void lane_cannyhough_callback(const sensor_msgs::Image& image_source)
 {
-  std::cout << "Getting image" << std::endl;
   cv_bridge::CvImagePtr cv_image = cv_bridge::toCvCopy(image_source, sensor_msgs::image_encodings::BGR8);
   IplImage frame = cv_image->image;
   process_image_common(&frame);
   cvWaitKey(2);
 }
-#endif
 
 int main(int argc, char *argv[])
 {
-  std::stringstream str_buf;
-  std::string file_name;
-  IplImage* image_in;
-  // Training: um: 0-94, umm: 0-95, uu: 0-97
-
-  // for(int i = 0; i <= 95; i++)
-  // {
-  //   CvMemStorage *houghStorage = cvCreateMemStorage(0);
-  //   std::cout << "Getting image" << std::endl;
-  //   str_buf << std::setfill('0') << std::setw(6) << i << ".png";
-  //   file_name = "/home/keenburn2004/data_road/training/image_2/umm_" + str_buf.str();
-  //   std::cout << file_name << std::endl;
-  //   IplImage* kitti_img = cvLoadImage(file_name.c_str(), 1);
-  //   cvWaitKey(1000);
-  //   process_image_common(kitti_img);
-  //   file_name = "/home/keenburn2004/data_road/training/results_perspective/umm_road_" + str_buf.str();
-  //   cvSaveImage(file_name.c_str(), kitti_img);
-  //   str_buf.str("");
-  // }
-
   ros::init(argc, argv, "line_ocv");
   ros::NodeHandle n;
   ros::NodeHandle private_nh("~");
@@ -652,7 +563,6 @@ int main(int argc, char *argv[])
   image_lane_objects = n.advertise<lane_detector::ImageLaneObjects>("lane_pos_xy", 1);
 
   ros::spin();
-
 
   return 0;
 }

@@ -58,6 +58,10 @@ add_executable(udacity_lane_detector
   nodes/lane_detector/udacity_lane_detector.cpp
 )
 
+add_executable(ipm_lane_detector
+  nodes/lane_detector/ipm_lane_detector.cpp
+)
+
 target_link_libraries(lane_detector
   ${catkin_LIBRARIES}
   opencv_highgui opencv_core opencv_imgproc m
@@ -78,6 +82,11 @@ target_link_libraries(udacity_lane_detector
   opencv_highgui opencv_core opencv_imgproc m
 )
 
+target_link_libraries(ipm_lane_detector
+  ${catkin_LIBRARIES}
+  opencv_highgui opencv_core opencv_imgproc m
+)
+
 add_dependencies(lane_detector lane_detector_generate_messages_cpp)
 
 add_dependencies(stop_line_detector lane_detector_generate_messages_cpp)
@@ -85,3 +94,5 @@ add_dependencies(stop_line_detector lane_detector_generate_messages_cpp)
 add_dependencies(kitti_lane_detector lane_detector_generate_messages_cpp)
 
 add_dependencies(udacity_lane_detector lane_detector_generate_messages_cpp)
+
+add_dependencies(ipm_lane_detector lane_detector_generate_messages_cpp)
